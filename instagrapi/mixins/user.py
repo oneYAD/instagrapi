@@ -422,6 +422,69 @@ class UserMixin:
         """
         return self.search_followers_v1(user_id, query)
 
+    def get_pending_requests(self) -> List[UserShort]:
+        """
+        Get Pending users (Private Mobile API)
+
+    
+        Returns
+        -------
+        List[UserShort]
+            List of users pending to approval
+        """
+        assert self.user_id, "Login required"
+
+        results = self.private_request(f"friendships/pending?")
+        users = results.get("users", [])
+        return [extract_user_short(user) for user in users]
+
+    def approve_pending_request(self, user_id: str) -> List[UserShort]:
+        """ 
+        Approve following request (Private Mobile API)
+
+        Parameters
+        ----------
+        user_id: str
+            User id of pending user
+        
+        Returns
+        -------
+        bool
+            Is user approved
+        """
+        assert self.user_id, "Login required"
+        user_id = str(user_id)
+        if user_id in self._users_followers.get(self.user_id, []):
+            self.logger.debug("User %s already a follower", user_id)
+            return False
+        data = self.with_action_data({"user_id": user_id})
+        result = self.private_request(f"friendships/approve/{user_id}/", data)
+        if self.user_id in self._users_followers:
+            self._users_followers.pop(self.user_id)  # reset
+        import ipdb; ipdb.set_trace()
+        return True
+        return result["friendship_status"]["followed_by"] is True
+
+
+    def search_following(self, user_id: str, query: str) -> List[UserShort]:
+        """
+        Search by following
+
+        Parameters
+        ----------
+        user_id: str
+            User id of an instagram account
+        query: str
+            Query string
+
+        Returns
+        -------
+        List[UserShort]
+            List of User short object
+        """
+        return self.search_following_v1(user_id, query)
+
+
     def search_following_v1(self, user_id: str, query: str) -> List[UserShort]:
         """
         Search following users (Private Mobile API)
@@ -450,23 +513,6 @@ class UserMixin:
         users = results.get("users", [])
         return [extract_user_short(user) for user in users]
 
-    def search_following(self, user_id: str, query: str) -> List[UserShort]:
-        """
-        Search by following
-
-        Parameters
-        ----------
-        user_id: str
-            User id of an instagram account
-        query: str
-            Query string
-
-        Returns
-        -------
-        List[UserShort]
-            List of User short object
-        """
-        return self.search_following_v1(user_id, query)
 
     def user_following_gql(self, user_id: str, amount: int = 0) -> List[UserShort]:
         """
@@ -515,6 +561,7 @@ class UserMixin:
         if amount:
             users = users[:amount]
         return users
+
 
     def user_following_v1_chunk(
         self, user_id: str, max_amount: int = 0, max_id: str = ""
