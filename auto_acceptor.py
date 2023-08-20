@@ -121,7 +121,10 @@ def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
     log_debug(f'successfull accept licensed users')
     return approved, True
 
-def run(session_path=DEFAULT_SESSION_JSON_PATH):
+def run(session_path, log_file_path):
+    global logger 
+    logger = setup_logging(log_file_path)
+
     logger.info(f'Run - load session from {session_path}')
 
     while True:
@@ -133,8 +136,10 @@ def run(session_path=DEFAULT_SESSION_JSON_PATH):
             logger.info(f'New accepted followers - {approved}')
         time.sleep(SLEEP_TIME)
 
-def new_subprocess(session_path=DEFAULT_SESSION_JSON_PATH):
-    subprocess.Popen(['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run; run({session_path});', '&'] , stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
+def new_subprocess(session_path=DEFAULT_SESSION_JSON_PATH, log_file_path=LOG_FILE):
+    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run; run(\"{session_path}\", \"{log_file_path}\");', '&']
+    log_debug(popen_args)
+    subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
     time.sleep(4)
 
 def main(args):
@@ -144,7 +149,7 @@ def main(args):
     if args.make_new_session:
         create_new_session(args.session_path)
     
-    new_subprocess(args.session_path)
+    new_subprocess(args.session_path, args.log_file_path)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Argument Parser Example")
