@@ -470,8 +470,6 @@ class UserMixin:
         result = self.private_request(f"friendships/approve/{user_id}/", data)
         if self.user_id in self._users_followers:
             self._users_followers.pop(self.user_id)  # reset
-        import ipdb; ipdb.set_trace()
-        return True
         return result["friendship_status"]["followed_by"] is True
 
 
