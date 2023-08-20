@@ -70,10 +70,10 @@ def create_new_session(session_path=DEFAULT_SESSION_JSON_PATH):
 
 def get_license_checker(db):
     def is_approved(user):
-        query = f"SELECT * FROM users WHERE instagram_handle = '{user.username}'"
-        result = db.run(query)
+        query = f"SELECT * FROM learners WHERE instagram_handle = '{user.username}'"
+        result = db.query(query)
         if len(result) == 1:
-            return result[0].status in STATUSES_TO_APPROVE
+            return result[0][6] in STATUSES_TO_APPROVE
         if len(result) > 1:
             logger.error(f'Found multiple users with instagram handle {user.username}')
             return False
@@ -102,23 +102,23 @@ def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
     
     try:
         pending_requests = client.get_pending_requests()
+        log_debug(f'all requests - {list(map(lambda user: user.username, pending_requests))}')
         with DatabaseConnection() as db:
             licensed_users = filter(get_license_checker(db), pending_requests)
-            log_debug(f'all requests - {map(lambda user: user.username, pending_requests)}')
-
             for user in licensed_users:
                 if client.approve_pending_request(user.pk):
                     approved.append(user.username)
+                    log_debug(f'user {user.username} approved')
                 else:
                     logger.error(f'Failed approve user {user.username} request')
             
-            db.commit("UPDATE users SET status = 'FOLLOWING ASSIGNED QUEST' WHERE instagram_handle IN ({})".format(','.join(map(lambda user: f'\'{user}\'', approved))))
-            log_debug("change status for new users {}".format(approved))
-
+            if approved: 
+                db.commit("UPDATE learners SET status = 'FOLLOWING ASSIGNED QUEST' WHERE instagram_handle IN ({})".format(','.join(map(lambda user: f'\'{user}\'', approved))))
+                log_debug("change status for new users {}".format(approved))
     except Exception as e:
         logger.error(f'Failed approve users requests.\n{e}')
 
-    log_debug(f'successfull accept licensed users')
+    log_debug(f'successfull accepting licensed users - {approved}')
     return approved, True
 
 def run(session_path, log_file_path):
