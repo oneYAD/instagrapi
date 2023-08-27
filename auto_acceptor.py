@@ -1,14 +1,5 @@
 from instagrapi import Client
-from instagrapi.exceptions import (
-    BadPassword,
-    ChallengeRequired,
-    FeedbackRequired,
-    LoginRequired,
-    PleaseWaitFewMinutes,
-    RecaptchaChallengeForm,
-    ReloginAttemptExceeded,
-    SelectContactPointRecoveryForm,
-)
+from instagrapi.exceptions import LoginRequired, PleaseWaitFewMinutes
 
 from getpass import getpass
 import logging # TODO
@@ -20,7 +11,7 @@ import random
 from rds_connector import DatabaseConnection
 
 DEFAULT_SESSION_JSON_PATH = '/tmp/session.json'
-SLEEP_TIME = 1200
+DEFAULT_SLEEP_TIME = 1200
 LOG_FILE = '/tmp/logger.log'
 DEBUG_MODE = True
 STATUSES_TO_APPROVE = ['ASSIGNED TO QUEST']
@@ -53,124 +44,122 @@ def setup_logging(log_path):
 # Set up logging with the specified log file path
 logger = None
 
-def handle_exception(client, e):
-    if isinstance(e, LoginRequired):
-        client.logger.exception(e)
-        client.relogin()
-    elif isinstance(e, PleaseWaitFewMinutes):
-        client.logger.exception(e)
-        logger.debug('sleeping for 3 minutes')
-        time.sleep(60 * 3)
-    else:
-        raise e
-
-def get_client():
-    client = Client()
-    client.handle_exception = handle_exception
-    return client
-
-username = ''
-password = ''
-client = get_client()
-
 def log_debug(data):
     if DEBUG_MODE:
         logger.debug(data)
+
+class bot:
+    client = None
+    username = ''
+    password = ''
+    session_path = DEFAULT_SESSION_JSON_PATH
+
+    def __init__(self, username, password, session_path ,sleep_time=DEFAULT_SLEEP_TIME):
+        """ 
+        Create a new bot instance
+        """
+        self.username = username
+        self.password = password
+        self.session_path = session_path
+        self.first_login()
+ 
+
+    def get_license_checker(self, db):
+        def is_approved(user):
+            query = f"SELECT * FROM learners WHERE instagram_handle = '{user.username}'"
+            result = db.query(query)
+            if len(result) == 1:
+                return result[0][6] in STATUSES_TO_APPROVE
+            if len(result) > 1:
+                logger.error(f'Found multiple users with instagram handle {user.username}')
+                return False
+            if len(result) == 0:
+                return False
+        return is_approved
+    
+    def defualt_handle_exception(client, e):
+        log_debug(f'handle exception {e}')
+        if isinstance(e, LoginRequired):
+            client.logger.exception(e)
+            client.relogin()
+        else:
+            raise e
+
+    def first_login(self):
+        self.client = Client()
+        self.client.handle_exception = self.defualt_handle_exception
+        self.client.login(self.username, self.password)
+        self.client.dump_settings(self.session_path)
+        log_debug(f'Successfull first login for user {self.username}')
+
+    def validate_login(self, relogin=True): 
+        if not os.path.exists(self.session_path):	
+            logger.error(f'session file {self.session_path} is not exist')			
         
-def create_new_session(session_path=DEFAULT_SESSION_JSON_PATH):
-    log_debug('Create New Session')
-    global username, password, client
-    username = input('Username: ')
-    password = getpass() # Works only for linux. use win_getpass on windows
-    client.delay_range = [1,3]
-
-    if not client.login(username, password):
-        logger.error(f'{username} login failed')			
-        return False		 
-    
-    if not client.dump_settings(session_path):
-        logger.error(f'dump settings into {session_path} failed')			
-        return False
-
-    log_debug(f'Successfull new session for user {username}')
-    return True
-
-
-def get_license_checker(db):
-    def is_approved(user):
-        query = f"SELECT * FROM learners WHERE instagram_handle = '{user.username}'"
-        result = db.query(query)
-        if len(result) == 1:
-            return result[0][6] in STATUSES_TO_APPROVE
-        if len(result) > 1:
-            logger.error(f'Found multiple users with instagram handle {user.username}')
+        try: # check session
+            try:
+                self.client.get_timeline_feed()
+            except (LoginRequired, PleaseWaitFewMinutes) as e:
+                self.client.load_settings(self.session_path)
+                self.client.login('', '', relogin=relogin)
+                try:
+                    self.client.get_timeline_feed()
+                except PleaseWaitFewMinutes as e:
+                    self.first_login(self.session_path)
+                    self.client.get_timeline_feed()
+                    
+        except Exception as e:
+            logger.error(f'load broken session from {self.session_path}. error - {e}')
             return False
-        if len(result) == 0:
-            return False
-    return is_approved
-
-def login_from_session(session_path=DEFAULT_SESSION_JSON_PATH): 
-    if not os.path.exists(session_path):	
-        logger.error(f'session file {session_path} is not exist')			
+        
+        log_debug(f'successfully connect to session')
+        return True
     
-    client.load_settings(session_path)
-    client.login(username, password)
-    
+    def accept_licensed_pending_users(self):
+        log_debug(f'accept licensed pending users. session path - {self.session_path}')
+        if not self.validate_login(self.session_path):
+            return [], False
+        
+        approved = []
+        try:
+            pending_requests = self.client.get_pending_requests()
+            log_debug(f'all requests - {list(map(lambda user: user.username, pending_requests))}')
+            with DatabaseConnection() as db:
+                licensed_users = filter(self.get_license_checker(db), pending_requests)
+                for user in licensed_users:
+                    if self.client.approve_pending_request(user.pk):
+                        approved.append(user.username)
+                        log_debug(f'user {user.username} approved')
+                    else:
+                        logger.error(f'Failed approve user {user.username} request')
+                
+                if approved: 
+                    db.commit("UPDATE learners SET status = 'FOLLOWING ASSIGNED QUEST' WHERE instagram_handle IN ({})".format(','.join(map(lambda user: f'\'{user}\'', approved))))
+                    log_debug("change status for new users {}".format(approved))
+        except Exception as e:
+            logger.error(f'Failed approve users requests.\n{e}')
 
-    try: # check session
-        client.get_timeline_feed()
-    except Exception as e:
-        logger.error(f'load broken session from {session_path}. error - {e}')
-        return False
-    
-    client.dump_settings(session_path)
-    log_debug(f'successfully connect to session')
-    return True
+        log_debug(f'successfull accepting licensed users - {approved}')
+        return approved, True
 
-def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
-    log_debug(f'accept licensed pending users. session path - {session_path}')
-    if not login_from_session(session_path):
-        return [], False
-    
-    approved = []
-    try:
-        pending_requests = client.get_pending_requests()
-        log_debug(f'all requests - {list(map(lambda user: user.username, pending_requests))}')
-        with DatabaseConnection() as db:
-            licensed_users = filter(get_license_checker(db), pending_requests)
-            for user in licensed_users:
-                if client.approve_pending_request(user.pk):
-                    approved.append(user.username)
-                    log_debug(f'user {user.username} approved')
-                else:
-                    logger.error(f'Failed approve user {user.username} request')
-            
-            if approved: 
-                db.commit("UPDATE learners SET status = 'FOLLOWING ASSIGNED QUEST' WHERE instagram_handle IN ({})".format(','.join(map(lambda user: f'\'{user}\'', approved))))
-                log_debug("change status for new users {}".format(approved))
-    except Exception as e:
-        logger.error(f'Failed approve users requests.\n{e}')
-
-    log_debug(f'successfull accepting licensed users - {approved}')
-    return approved, True
-
-def run(session_path, log_file_path):
+def run_auto_acceptor(session_path, log_file_path, sleep_time, username, password):
     global logger 
     logger = setup_logging(log_file_path)
-
     logger.info(f'Run - load session from {session_path}')
 
+    bot = bot(username, password, session_path)
+    
     while True:
-        approved, valid_session = accept_licensed_pending_users(session_path)
+        approved, valid_session = bot.accept_licensed_pending_users(session_path)
         if not valid_session:
-            break # TODO make new session
+            break 
         
         if approved:			
             logger.info(f'New accepted followers - {approved}')
-        time.sleep(SLEEP_TIME * (1 + (random.random() - 0.5) / 2)) # for making the instagram automation detector work harder 
+        time.sleep(max(random.gauss(sleep_time, sleep_time/3), 1)) # for making the instagram automation detector work harder 
 
-def new_subprocess(session_path=DEFAULT_SESSION_JSON_PATH, log_file_path=LOG_FILE):
-    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run; run(\"{session_path}\", \"{log_file_path}\");', '&']
+def new_subprocess(sleep_time, session_path, log_file_path, username, password):
+    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", \"{sleep_time}\", \"{username}\", \"{password}\");', '&']
     log_debug(popen_args)
     subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
     time.sleep(4)
@@ -178,20 +167,19 @@ def new_subprocess(session_path=DEFAULT_SESSION_JSON_PATH, log_file_path=LOG_FIL
 def main(args):
     global logger 
     logger = setup_logging(args.log_file_path)
-
-    if args.make_new_session:
-        create_new_session(args.session_path)
-    
-    new_subprocess(args.session_path, args.log_file_path)
+    username = input('Username: ')
+    password = getpass() # Works only for linux. use win_getpass on windows
+    new_subprocess(args.sleep_time, args.session_path, args.log_file_path, username, password)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Argument Parser Example")
     
     # Add command-line arguments
-    parser.add_argument("session_path", type=str, help="Path to the session")
-    parser.add_argument("log_file_path", type=str, help="Path to the log file")
-    parser.add_argument(
-        "--make_new_session", action="store_true", help="Flag to make a new session"
-    )
+    parser.add_argument("session-path", type=str, help="Path to the session")
+    parser.add_argument("log-file-path", type=str, help="Path to the log file")
+    # parser.add_argument("env-username", dest="env_username", type=str, help="Environment variable which store username")    
+    # parser.add_argument("env-password", dest="env_password", type=str, help="Environment variable which store password")
+    parser.add_argument("--sleep_time", dest="sleep_time", type=int, default=DEFAULT_SLEEP_TIME, help="Sleep time in seconds", required=False)
+    
     args = parser.parse_args()
     main(args)

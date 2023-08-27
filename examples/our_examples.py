@@ -11,6 +11,8 @@ def user_presence(cl, params={}):
     l = list(map( lambda k: cl.user_info(k).username, up.keys()))
 
 def threads_inbox(cl, params={}):
-    pending = cl.private_request("direct_v2/pending_inbox/", params=params)
-    inbox = cl.private_request("direct_v2/inbox/", params=params)
-    return pending['inbox']['threads'], inbox['inbox']['threads']
+    # pending = cl.private_request("direct_v2/pending_inbox/", params=params)
+    # inbox = cl.private_request("direct_v2/inbox/", params=params)
+    pending = cl.direct_pending_inbox()
+    inbox = cl.direct_threads()
+    return pending['threads'], inbox['inbox']['threads']
