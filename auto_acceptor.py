@@ -1,4 +1,15 @@
 from instagrapi import Client
+from instagrapi.exceptions import (
+    BadPassword,
+    ChallengeRequired,
+    FeedbackRequired,
+    LoginRequired,
+    PleaseWaitFewMinutes,
+    RecaptchaChallengeForm,
+    ReloginAttemptExceeded,
+    SelectContactPointRecoveryForm,
+)
+
 from getpass import getpass
 import logging # TODO
 import os
@@ -6,7 +17,6 @@ import time
 import subprocess
 import argparse
 import random
-
 from rds_connector import DatabaseConnection
 
 DEFAULT_SESSION_JSON_PATH = '/tmp/session.json'
@@ -43,9 +53,25 @@ def setup_logging(log_path):
 # Set up logging with the specified log file path
 logger = None
 
+def handle_exception(client, e):
+    if isinstance(e, LoginRequired):
+        client.logger.exception(e)
+        client.relogin()
+    elif isinstance(e, PleaseWaitFewMinutes):
+        client.logger.exception(e)
+        logger.debug('sleeping for 3 minutes')
+        time.sleep(60 * 3)
+    else:
+        raise e
+
+def get_client():
+    client = Client()
+    client.handle_exception = handle_exception
+    return client
+
 username = ''
 password = ''
-client = Client()
+client = get_client()
 
 def log_debug(data):
     if DEBUG_MODE:
@@ -93,13 +119,9 @@ def login_from_session(session_path=DEFAULT_SESSION_JSON_PATH):
 
     try: # check session
         client.get_timeline_feed()
-    except:
-        client.relogin()
-        try:
-            client.get_timeline_feed()
-        except:
-            logger.error(f'load broken session from {session_path}')
-            return False
+    except Exception as e:
+        logger.error(f'load broken session from {session_path}. error - {e}')
+        return False
     
     client.dump_settings(session_path)
     log_debug(f'successfully connect to session')
