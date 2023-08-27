@@ -90,7 +90,6 @@ def login_from_session(session_path=DEFAULT_SESSION_JSON_PATH):
     client.load_settings(session_path)
     client.login(username, password)
     
-    approved = []
 
     try: # check session
         client.get_timeline_feed()
@@ -100,15 +99,18 @@ def login_from_session(session_path=DEFAULT_SESSION_JSON_PATH):
             client.get_timeline_feed()
         except:
             logger.error(f'load broken session from {session_path}')
-            return approved, False
+            return False
     
     client.dump_settings(session_path)
     log_debug(f'successfully connect to session')
+    return True
 
 def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
     log_debug(f'accept licensed pending users. session path - {session_path}')
-    login_from_session(session_path)
+    if not login_from_session(session_path):
+        return [], False
     
+    approved = []
     try:
         pending_requests = client.get_pending_requests()
         log_debug(f'all requests - {list(map(lambda user: user.username, pending_requests))}')
