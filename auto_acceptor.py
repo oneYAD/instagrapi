@@ -1,5 +1,6 @@
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired, PleaseWaitFewMinutes
+from instagrapi.exceptions import LoginRequired, PleaseWaitFewMinutes
 
 from getpass import getpass
 import logging # TODO
@@ -175,8 +176,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Argument Parser Example")
     
     # Add command-line arguments
-    parser.add_argument("session-path", type=str, help="Path to the session")
-    parser.add_argument("log-file-path", type=str, help="Path to the log file")
+    parser.add_argument("session_path", type=str, help="Path to the session")
+    parser.add_argument("log_file_path", type=str, help="Path to the log file")
     # parser.add_argument("env-username", dest="env_username", type=str, help="Environment variable which store username")    
     # parser.add_argument("env-password", dest="env_password", type=str, help="Environment variable which store password")
     parser.add_argument("--sleep_time", dest="sleep_time", type=int, default=DEFAULT_SLEEP_TIME, help="Sleep time in seconds", required=False)
