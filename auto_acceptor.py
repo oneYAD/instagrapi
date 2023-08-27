@@ -5,11 +5,12 @@ import os
 import time
 import subprocess
 import argparse
+import random
 
 from rds_connector import DatabaseConnection
 
 DEFAULT_SESSION_JSON_PATH = '/tmp/session.json'
-SLEEP_TIME = 30
+SLEEP_TIME = 1200
 LOG_FILE = '/tmp/logger.log'
 DEBUG_MODE = True
 STATUSES_TO_APPROVE = ['ASSIGNED TO QUEST']
@@ -52,6 +53,7 @@ def log_debug(data):
         
 def create_new_session(session_path=DEFAULT_SESSION_JSON_PATH):
     log_debug('Create New Session')
+    global username, password, client
     username = input('Username: ')
     password = getpass() # Works only for linux. use win_getpass on windows
     client.delay_range = [1,3]
@@ -80,10 +82,8 @@ def get_license_checker(db):
         if len(result) == 0:
             return False
     return is_approved
-        
-def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
-    log_debug(f'accept licensed pending users. session path - {session_path}')
-    
+
+def login_from_session(session_path=DEFAULT_SESSION_JSON_PATH): 
     if not os.path.exists(session_path):	
         logger.error(f'session file {session_path} is not exist')			
     
@@ -95,10 +95,19 @@ def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
     try: # check session
         client.get_timeline_feed()
     except:
-        logger.error(f'load broken session from {session_path}')
-        return approved, False
+        client.relogin()
+        try:
+            client.get_timeline_feed()
+        except:
+            logger.error(f'load broken session from {session_path}')
+            return approved, False
     
+    client.dump_settings(session_path)
     log_debug(f'successfully connect to session')
+
+def accept_licensed_pending_users(session_path=DEFAULT_SESSION_JSON_PATH):
+    log_debug(f'accept licensed pending users. session path - {session_path}')
+    login_from_session(session_path)
     
     try:
         pending_requests = client.get_pending_requests()
@@ -134,7 +143,7 @@ def run(session_path, log_file_path):
         
         if approved:			
             logger.info(f'New accepted followers - {approved}')
-        time.sleep(SLEEP_TIME)
+        time.sleep(SLEEP_TIME * (1 + (random.random() - 0.5) / 2)) # for making the instagram automation detector work harder 
 
 def new_subprocess(session_path=DEFAULT_SESSION_JSON_PATH, log_file_path=LOG_FILE):
     popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run; run(\"{session_path}\", \"{log_file_path}\");', '&']
