@@ -180,7 +180,7 @@ if __name__ == '__main__':
     parser.add_argument("log_file_path", type=str, help="Path to the log file")
     # parser.add_argument("env-username", dest="env_username", type=str, help="Environment variable which store username")    
     # parser.add_argument("env-password", dest="env_password", type=str, help="Environment variable which store password")
-    parser.add_argument("--sleep_time", dest="sleep_time", type=int, default=DEFAULT_SLEEP_TIME, help="Sleep time in seconds", required=False)
+    parser.add_argument("--sleep_time", dest="sleep_time", type=int, default=DEFAULT_SLEEP_TIME, help="Seconds to wait between connections", required=False)
     
     args = parser.parse_args()
     main(args)
