@@ -160,7 +160,7 @@ def run_auto_acceptor(session_path, log_file_path, sleep_time, username, passwor
         time.sleep(max(random.gauss(sleep_time, sleep_time/3), 1)) # for making the instagram automation detector work harder 
 
 def new_subprocess(sleep_time, session_path, log_file_path, username, password):
-    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", \"{sleep_time}\", \"{username}\", \"{password}\");', '&']
+    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\");', '&']
     log_debug(popen_args)
     subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
     time.sleep(4)
