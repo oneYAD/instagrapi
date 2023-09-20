@@ -148,7 +148,7 @@ def run_auto_acceptor(session_path, log_file_path, sleep_time, username, passwor
     logger = setup_logging(log_file_path)
     logger.info(f'Run - load session from {session_path}')
 
-    bot = IGBot(username, password, session_path)
+    bot = IGBot(username, password, session_path, sleep_time)
     
     while True:
         approved, valid_session = bot.accept_licensed_pending_users()
