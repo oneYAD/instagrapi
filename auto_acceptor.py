@@ -49,7 +49,7 @@ def log_debug(data):
     if DEBUG_MODE:
         logger.debug(data)
 
-class bot:
+class IGBot:
     client = None
     username = ''
     password = ''
@@ -78,7 +78,7 @@ class bot:
                 return False
         return is_approved
     
-    def defualt_handle_exception(client, e):
+    def default_handle_exception(client, e):
         log_debug(f'handle exception {e}')
         if isinstance(e, LoginRequired):
             client.logger.exception(e)
@@ -88,7 +88,7 @@ class bot:
 
     def first_login(self):
         self.client = Client()
-        self.client.handle_exception = self.defualt_handle_exception
+        self.client.handle_exception = default_handle_exception
         self.client.login(self.username, self.password)
         self.client.dump_settings(self.session_path)
         log_debug(f'Successfull first login for user {self.username}')
@@ -148,10 +148,10 @@ def run_auto_acceptor(session_path, log_file_path, sleep_time, username, passwor
     logger = setup_logging(log_file_path)
     logger.info(f'Run - load session from {session_path}')
 
-    bot = bot(username, password, session_path)
+    bot = IGBot(username, password, session_path)
     
     while True:
-        approved, valid_session = bot.accept_licensed_pending_users(session_path)
+        approved, valid_session = bot.accept_licensed_pending_users()
         if not valid_session:
             break 
         
@@ -163,7 +163,7 @@ def new_subprocess(sleep_time, session_path, log_file_path, username, password):
     popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\");', '&']
     log_debug(popen_args)
     subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
-    time.sleep(4)
+    time.sleep(1)
 
 def main(args):
     global logger 
