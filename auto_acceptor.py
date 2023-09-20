@@ -78,15 +78,16 @@ class IGBot:
                 return False
         return is_approved
     
-    def default_handle_exception(client, e):
-        log_debug(f'handle exception {e}')
-        if isinstance(e, LoginRequired):
-            client.logger.exception(e)
-            client.relogin()
-        else:
-            raise e
 
     def first_login(self):
+        def default_handle_exception(client, e):
+            log_debug(f'handle exception {e}')
+            if isinstance(e, LoginRequired):
+                client.logger.exception(e)
+                client.relogin()
+            else:
+                raise e
+
         self.client = Client()
         self.client.handle_exception = default_handle_exception
         self.client.login(self.username, self.password)
