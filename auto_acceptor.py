@@ -49,10 +49,8 @@ def log_debug(data):
     if DEBUG_MODE:
         logger.debug(data)
 
-def create_new_session(session_path):
+def create_new_session(session_path, username, password):
     log_debug('Create New Session')
-    username = input('Username: ')
-    password = getpass() # Works only for linux. use win_getpass on windows
     client = Client()
     client.delay_range = [1,3]
 
@@ -209,7 +207,7 @@ def main(args):
     password = getpass() # Works only for linux. use win_getpass on windows
     
     if args.make_new_session:
-        create_new_session(args.session_path)
+        create_new_session(args.session_path, username=username, password=password)
 
     new_subprocess(args.session_path, args.log_file_path, args.sleep_time, username, password)
 
