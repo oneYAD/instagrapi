@@ -143,7 +143,7 @@ class IGBot:
                 if not logged_in:
                     raise e
                 self.last_bad_logins_time.append(time.time())
-                
+
         except Exception as e:
             logger.error(f'load broken session from {self.session_path}. error - {e}')
             return False
@@ -201,22 +201,24 @@ def new_subprocess(session_path, log_file_path, sleep_time, username, password):
     time.sleep(1)
 
 def main(args):
-    global logger 
-    logger = setup_logging(args.log_file_path)
-    username = input('Username: ')
+    global logger
+    log_file_path = f'/home/ubuntu/logs/{args.quest.lower()}.log'  
+    session_path = f'/home/ubuntu/sessions/{args.quest}.log'
+    username = f'Reshuffle.{args.quest}'
     password = getpass() # Works only for linux. use win_getpass on windows
+
+    logger = setup_logging(args.log_file_path)
     
     if args.make_new_session:
-        create_new_session(args.session_path, username=username, password=password)
+        create_new_session(session_path, username=username, password=password)
 
-    new_subprocess(args.session_path, args.log_file_path, args.sleep_time, username, password)
+    new_subprocess(session_path, log_file_path, args.sleep_time, username, password)
 
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser(description="Argument Parser Example")
     
     # Add command-line arguments
-    parser.add_argument("session_path", type=str, help="Path to the session")
-    parser.add_argument("log_file_path", type=str, help="Path to the log file")
+    parser.add_argument("quest", type=str, help="quest to run autoaccept")
     parser.add_argument(
         "--make-new-session", dest="make_new_session", action="store_true", help="Flag to make a new session"
     )
