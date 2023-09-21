@@ -117,11 +117,11 @@ class IGBot:
 
     def checked_logged_in(self):
         simple_client_functions = [
-            (self.get_timeline_feed, ()),
-            (self.user_info, (self.user_id, False)),
-            (self.user_followers, (self.user_id, False, 2)),
-            (self.user_following, (self.user_id, False, 2)),
-            (self.user_friendship_v1, (self.user_id,)),
+            (self.client.get_timeline_feed, ()),
+            (self.client.user_info, (self.client.user_id, False)),
+            (self.client.user_followers, (self.client.user_id, False, 2)),
+            (self.client.user_following, (self.client.user_id, False, 2)),
+            (self.client.user_friendship_v1, (self.client.user_id,)),
         ]
         try:
             func, args = random.choice(simple_client_functions)
