@@ -49,6 +49,24 @@ def log_debug(data):
     if DEBUG_MODE:
         logger.debug(data)
 
+def create_new_session(session_path):
+    log_debug('Create New Session')
+    username = input('Username: ')
+    password = getpass() # Works only for linux. use win_getpass on windows
+    client = Client()
+    client.delay_range = [1,3]
+
+    if not client.login(username, password):
+        logger.error(f'{username} login failed')                       
+        return False 
+    
+    if not client.dump_settings(session_path):
+        logger.error(f'dump settings into {session_path} failed')                      
+        return False
+
+    log_debug(f'Successfull new session for user {username}')
+    return True
+
 class IGBot:
     client = None
     username = ''
@@ -61,8 +79,9 @@ class IGBot:
         """
         self.username = username
         self.password = password
+        self.sleep_time = sleep_time
         self.session_path = session_path
-        self.first_login()
+        self.initiate_login()
  
 
     def get_license_checker(self, db):
@@ -79,49 +98,66 @@ class IGBot:
         return is_approved
     
 
-    def first_login(self):
+    def initiate_login(self, dont_use_session=False):
         def default_handle_exception(client, e):
             log_debug(f'handle exception {e}')
             if isinstance(e, LoginRequired):
-                client.logger.exception(e)
+                logger.exception(e)
                 client.relogin()
             else:
                 raise e
 
         self.client = Client()
         self.client.handle_exception = default_handle_exception
-        self.client.login(self.username, self.password)
-        self.client.dump_settings(self.session_path)
+        if (self.session_path and not dont_use_session):
+            self.client.load_settings(self.session_path)
+            self.client.login('', '')
+        else:
+            self.client.login(self.username, self.password)
+            self.client.dump_settings(self.session_path)
         log_debug(f'Successfull first login for user {self.username}')
 
-    def validate_login(self, relogin=True): 
+    def checked_logged_in(self):
+        simple_client_functions = [
+            (self.get_timeline_feed, ()),
+            (self.user_info, (self.user_id, False)),
+            (self.user_followers, (self.user_id, False, 2)),
+            (self.user_following, (self.user_id, False, 2)),
+            (self.user_friendship_v1, (self.user_id,)),
+        ]
+        try:
+            func, args = random.choice(simple_client_functions)
+            log_debug(f'try running {func.__name__}{args}')
+            func(*args)
+        except Exception as e:
+            log_debug(f'failed running {func.__name__}{args}. error - {e}')
+            return False, e
+        return True, None
+    
+    def validate_login(self): 
         if not os.path.exists(self.session_path):	
             logger.error(f'session file {self.session_path} is not exist')			
         
         try: # check session
-            try:
-                self.client.get_timeline_feed()
-            except (LoginRequired, PleaseWaitFewMinutes) as e:
-                self.client.load_settings(self.session_path)
-                self.client.login('', '', relogin=relogin)
-                try:
-                    self.client.get_timeline_feed()
-                except PleaseWaitFewMinutes as e:
-                    self.first_login(self.session_path)
-                    self.client.get_timeline_feed()
+            logged_in, e = self.checked_logged_in()
+            if not logged_in and isinstance(e, (LoginRequired, PleaseWaitFewMinutes)):
+                self.initiate_login(dont_use_session=True)
+                logged_in, e = self.checked_logged_in()
+                if not logged_in:
+                    raise e
                     
         except Exception as e:
             logger.error(f'load broken session from {self.session_path}. error - {e}')
             return False
         
-        log_debug(f'successfully connect to session')
         return True
     
     def accept_licensed_pending_users(self):
         log_debug(f'accept licensed pending users. session path - {self.session_path}')
-        if not self.validate_login(self.session_path):
+        if not self.validate_login():
             return [], False
-        
+        log_debug(f'successfully connect to session')
+
         approved = []
         try:
             pending_requests = self.client.get_pending_requests()
@@ -160,7 +196,7 @@ def run_auto_acceptor(session_path, log_file_path, sleep_time, username, passwor
             logger.info(f'New accepted followers - {approved}')
         time.sleep(max(random.gauss(sleep_time, sleep_time/3), 1)) # for making the instagram automation detector work harder 
 
-def new_subprocess(sleep_time, session_path, log_file_path, username, password):
+def new_subprocess(session_path, log_file_path, sleep_time, username, password):
     popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\");', '&']
     log_debug(popen_args)
     subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
@@ -171,17 +207,23 @@ def main(args):
     logger = setup_logging(args.log_file_path)
     username = input('Username: ')
     password = getpass() # Works only for linux. use win_getpass on windows
-    new_subprocess(args.sleep_time, args.session_path, args.log_file_path, username, password)
+    
+    if args.make_new_session:
+        create_new_session(args.session_path)
 
-if __name__ == '__main__':
+    new_subprocess(args.session_path, args.log_file_path, args.sleep_time, username, password)
+
+if __name__ == '__main__': 
     parser = argparse.ArgumentParser(description="Argument Parser Example")
     
     # Add command-line arguments
     parser.add_argument("session_path", type=str, help="Path to the session")
     parser.add_argument("log_file_path", type=str, help="Path to the log file")
-    # parser.add_argument("env-username", dest="env_username", type=str, help="Environment variable which store username")    
-    # parser.add_argument("env-password", dest="env_password", type=str, help="Environment variable which store password")
-    parser.add_argument("--sleep_time", dest="sleep_time", type=int, default=DEFAULT_SLEEP_TIME, help="Seconds to wait between connections", required=False)
+    parser.add_argument(
+        "--make-new-session", dest="make_new_session", action="store_true", help="Flag to make a new session"
+    )
+
+    parser.add_argument("--sleep-time", dest="sleep_time", type=int, default=DEFAULT_SLEEP_TIME, help="Seconds to wait between connections", required=False)
     
     args = parser.parse_args()
     main(args)
