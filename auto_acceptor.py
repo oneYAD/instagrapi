@@ -207,7 +207,7 @@ def main(args):
     username = f'Reshuffle.{args.quest}'
     password = getpass() # Works only for linux. use win_getpass on windows
 
-    logger = setup_logging(args.log_file_path)
+    logger = setup_logging(log_file_path)
     
     if args.make_new_session:
         create_new_session(session_path, username=username, password=password)
