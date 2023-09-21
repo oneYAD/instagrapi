@@ -12,7 +12,7 @@ import random
 from rds_connector import DatabaseConnection
 
 DEFAULT_SESSION_JSON_PATH = '/tmp/session.json'
-DEFAULT_SLEEP_TIME = 1200
+DEFAULT_SLEEP_TIME = 3 * 60 # 3 minutes
 LOG_FILE = '/tmp/logger.log'
 DEBUG_MODE = True
 STATUSES_TO_APPROVE = ['ASSIGNED TO QUEST']
@@ -66,11 +66,6 @@ def create_new_session(session_path, username, password):
     return True
 
 class IGBot:
-    client = None
-    username = ''
-    password = ''
-    session_path = DEFAULT_SESSION_JSON_PATH
-
     def __init__(self, username, password, session_path ,sleep_time=DEFAULT_SLEEP_TIME):
         """ 
         Create a new bot instance
@@ -79,6 +74,7 @@ class IGBot:
         self.password = password
         self.sleep_time = sleep_time
         self.session_path = session_path
+        self.last_bad_logins_time = [0,0]
         self.initiate_login()
  
 
@@ -113,7 +109,7 @@ class IGBot:
         else:
             self.client.login(self.username, self.password)
             self.client.dump_settings(self.session_path)
-        log_debug(f'Successfull first login for user {self.username}')
+        log_debug(f'Successfull initiate login for user {self.username}')
 
     def checked_logged_in(self):
         simple_client_functions = [
@@ -139,11 +135,15 @@ class IGBot:
         try: # check session
             logged_in, e = self.checked_logged_in()
             if not logged_in and isinstance(e, (LoginRequired, PleaseWaitFewMinutes)):
+                time_from_last_bad_logins = time.time() - self.last_bad_login_time.pop()
+                if (time_from_last_bad_logins < 60 * 60): # hour
+                    time.sleep(max(60 * 60 - time_from_last_bad_logins, 1))
                 self.initiate_login(dont_use_session=True)
                 logged_in, e = self.checked_logged_in()
                 if not logged_in:
                     raise e
-                    
+                self.last_bad_logins_time.append(time.time())
+                
         except Exception as e:
             logger.error(f'load broken session from {self.session_path}. error - {e}')
             return False
