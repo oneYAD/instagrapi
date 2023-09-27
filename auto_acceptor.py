@@ -108,8 +108,10 @@ class IGBot:
         self.client = Client()
         self.client.handle_exception = default_handle_exception
         self.client.delay_range = [1,3]
-        self.client.set_proxy(self.proxy)
         
+        if (self.proxy):
+            self.client.set_proxy(self.proxy)
+
         if (self.session_path and not dont_use_session):
             self.client.load_settings(self.session_path)
             self.client.login('', '')
@@ -187,6 +189,7 @@ class IGBot:
                     log_debug("change status for new users {}".format(approved))
         except Exception as e:
             logger.error(f'Failed approve users requests.\n{e}')
+            return [], False
 
         log_debug(f'successfull accepting licensed users - {approved}')
         return approved, True
@@ -208,7 +211,7 @@ def run_auto_acceptor(session_path, log_file_path, sleep_time, username, passwor
         time.sleep(max(random.gauss(sleep_time, sleep_time/3), 1)) # for making the instagram automation detector work harder 
 
 def new_subprocess(session_path, log_file_path, sleep_time, username, password, proxy):
-    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\", \"{proxy}\");', '&']
+    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\", \"{proxy}\");', '&'] # TODO - password is not secure - view in ps aux - move it by pipe?
     log_debug(popen_args)
     subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
     time.sleep(1)
@@ -234,7 +237,7 @@ if __name__ == '__main__':
     parser.add_argument("quest", type=str, help="quest to run autoaccept")
     
     parser.add_argument(
-        "--use-proxy", dest="proxy_href", type=str, default=None, help="proxy for the session"
+        "--use-proxy", dest="proxy_href", type=str, default="", help="proxy for the session"
     )    
     parser.add_argument(
         "--make-new-session", dest="make_new_session", action="store_true", help="Flag to make a new session"
