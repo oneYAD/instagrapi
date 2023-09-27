@@ -1,6 +1,5 @@
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired, PleaseWaitFewMinutes
-from instagrapi.exceptions import LoginRequired, PleaseWaitFewMinutes
+from instagrapi.exceptions import ChallengeRequired, LoginRequired, PleaseWaitFewMinutes
 
 from getpass import getpass
 import logging # TODO
@@ -13,6 +12,7 @@ from rds_connector import DatabaseConnection
 
 DEFAULT_SESSION_JSON_PATH = '/tmp/session.json'
 DEFAULT_SLEEP_TIME = 3 * 60 # 3 minutes
+SLEEP_TIME_BAD_LOGIN = 60 * 60 # 1 hour
 LOG_FILE = '/tmp/logger.log'
 DEBUG_MODE = True
 STATUSES_TO_APPROVE = ['ASSIGNED TO QUEST']
@@ -49,11 +49,14 @@ def log_debug(data):
     if DEBUG_MODE:
         logger.debug(data)
 
-def create_new_session(session_path, username, password):
+def create_new_session(session_path, username, password, proxy):
     log_debug('Create New Session')
     client = Client()
     client.delay_range = [1,3]
 
+    if proxy:
+        client.set_proxy(proxy)
+    
     if not client.login(username, password):
         logger.error(f'{username} login failed')                       
         return False 
@@ -66,7 +69,7 @@ def create_new_session(session_path, username, password):
     return True
 
 class IGBot:
-    def __init__(self, username, password, session_path ,sleep_time=DEFAULT_SLEEP_TIME):
+    def __init__(self, username, password, session_path, proxy, sleep_time=DEFAULT_SLEEP_TIME):
         """ 
         Create a new bot instance
         """
@@ -74,6 +77,7 @@ class IGBot:
         self.password = password
         self.sleep_time = sleep_time
         self.session_path = session_path
+        self.proxy = proxy
         self.last_bad_logins_time = [0,0]
         self.initiate_login()
  
@@ -103,6 +107,9 @@ class IGBot:
 
         self.client = Client()
         self.client.handle_exception = default_handle_exception
+        self.client.delay_range = [1,3]
+        self.client.set_proxy(self.proxy)
+        
         if (self.session_path and not dont_use_session):
             self.client.load_settings(self.session_path)
             self.client.login('', '')
@@ -134,14 +141,20 @@ class IGBot:
         
         try: # check session
             logged_in, e = self.checked_logged_in()
-            if not logged_in and isinstance(e, (LoginRequired, PleaseWaitFewMinutes)):
+            if not logged_in and isinstance(e, ChallengeRequired):
+                self.client.challenge_resolve(self.client.last_json)
+                logged_in, e = self.checked_logged_in()
+            if not logged_in and isinstance(e, (LoginRequired, PleaseWaitFewMinutes, ChallengeRequired)):
                 time_from_last_bad_logins = time.time() - self.last_bad_login_time.pop()
-                if (time_from_last_bad_logins < 60 * 60): # hour
-                    time.sleep(max(60 * 60 - time_from_last_bad_logins, 1))
-                self.initiate_login(dont_use_session=True)
+                if (time_from_last_bad_logins < SLEEP_TIME_BAD_LOGIN):
+                    time.sleep(max(SLEEP_TIME_BAD_LOGIN - time_from_last_bad_logins, 1))
+                self.initiate_login(dont_use_session=False)
                 logged_in, e = self.checked_logged_in()
                 if not logged_in:
-                    raise e
+                    self.initiate_login(dont_use_session=True)
+                    logged_in, e = self.checked_logged_in()
+                    if not logged_in:
+                        raise e
                 self.last_bad_logins_time.append(time.time())
 
         except Exception as e:
@@ -178,12 +191,12 @@ class IGBot:
         log_debug(f'successfull accepting licensed users - {approved}')
         return approved, True
 
-def run_auto_acceptor(session_path, log_file_path, sleep_time, username, password):
+def run_auto_acceptor(session_path, log_file_path, sleep_time, username, password, proxy):
     global logger 
     logger = setup_logging(log_file_path)
     logger.info(f'Run - load session from {session_path}')
 
-    bot = IGBot(username, password, session_path, sleep_time)
+    bot = IGBot(username, password, session_path, proxy, sleep_time)
     
     while True:
         approved, valid_session = bot.accept_licensed_pending_users()
@@ -194,8 +207,8 @@ def run_auto_acceptor(session_path, log_file_path, sleep_time, username, passwor
             logger.info(f'New accepted followers - {approved}')
         time.sleep(max(random.gauss(sleep_time, sleep_time/3), 1)) # for making the instagram automation detector work harder 
 
-def new_subprocess(session_path, log_file_path, sleep_time, username, password):
-    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\");', '&']
+def new_subprocess(session_path, log_file_path, sleep_time, username, password, proxy):
+    popen_args = ['python3', '-c', f'from {os.path.basename(__file__)[:-3]} import run_auto_acceptor; run_auto_acceptor(\"{session_path}\", \"{log_file_path}\", {sleep_time}, \"{username}\", \"{password}\", \"{proxy}\");', '&']
     log_debug(popen_args)
     subprocess.Popen(popen_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, start_new_session=True)
     time.sleep(1)
@@ -210,15 +223,19 @@ def main(args):
     logger = setup_logging(log_file_path)
     
     if args.make_new_session:
-        create_new_session(session_path, username=username, password=password)
+        create_new_session(session_path, username=username, password=password, proxy=args.proxy_href)
 
-    new_subprocess(session_path, log_file_path, args.sleep_time, username, password)
+    new_subprocess(session_path, log_file_path, args.sleep_time, username, password, args.proxy_href)
 
 if __name__ == '__main__': 
     parser = argparse.ArgumentParser(description="Argument Parser Example")
     
     # Add command-line arguments
     parser.add_argument("quest", type=str, help="quest to run autoaccept")
+    
+    parser.add_argument(
+        "--use-proxy", dest="proxy_href", type=str, default=None, help="proxy for the session"
+    )    
     parser.add_argument(
         "--make-new-session", dest="make_new_session", action="store_true", help="Flag to make a new session"
     )
