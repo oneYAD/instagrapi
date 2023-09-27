@@ -147,7 +147,7 @@ class IGBot:
                 self.client.challenge_resolve(self.client.last_json)
                 logged_in, e = self.checked_logged_in()
             if not logged_in and isinstance(e, (LoginRequired, PleaseWaitFewMinutes, ChallengeRequired)):
-                time_from_last_bad_logins = time.time() - self.last_bad_login_time.pop()
+                time_from_last_bad_logins = time.time() - self.last_bad_logins_time.pop()
                 if (time_from_last_bad_logins < SLEEP_TIME_BAD_LOGIN):
                     time.sleep(max(SLEEP_TIME_BAD_LOGIN - time_from_last_bad_logins, 1))
                 self.initiate_login(dont_use_session=False)
