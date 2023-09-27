@@ -114,12 +114,18 @@ class IGBot:
 
         if (self.session_path and not dont_use_session):
             self.client.load_settings(self.session_path)
-            self.client.login('', '')
-        else:
-            self.client.login(self.username, self.password)
-            self.client.dump_settings(self.session_path)
-        log_debug(f'Successfull initiate login for user {self.username}')
+            if self.client.login('', ''):
+                log_debug(f'Successfull initiate login for user {self.username}. using session {self.session_path}')
+                return 
 
+        if self.client.login(self.username, self.password):
+            self.client.dump_settings(self.session_path)
+            log_debug(f'Successfull initiate login for user {self.username}. using username and password')
+            return 
+            
+        logger.error(f'Failed initiate login for user {self.username}')
+        raise Exception(f'Failed initiate login for user {self.username}')
+                
     def checked_logged_in(self):
         simple_client_functions = [
             (self.client.get_timeline_feed, ()),
